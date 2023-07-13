@@ -5,7 +5,7 @@ from PIL import ImageTk, Image
 
 import cv2
 import numpy as np
-import hashlib
+import imagehash
 
 import os
 
@@ -13,8 +13,10 @@ import os
 root = tk.Tk()
 
 # Генерирование хеша изображения
-def generate_matrix_id(matrix):
-    matrix_hash = int(hashlib.md5(matrix.astype("uint8")).hexdigest(), 16)
+def generate_matrix_id(img):
+    rgb_image  = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    image = Image.fromarray(rgb_image)
+    matrix_hash = int(str(imagehash.average_hash(image)), 16) // 10**6
     return str(matrix_hash)
 
 def circle_mask(image, center, radius):
@@ -154,10 +156,58 @@ def get_glossy(path):
     # Возвращение маскированного изображения и координат центра окружности
     return masked_image, center
 
+def remove_background(path):
+    # Преобразование изображения
+    image = cv2.imread(path)
+
+    # Желаемый размер
+    if image.shape[0] < 300:
+        width = image.shape[0] * 5
+        height = image.shape[0] * 5
+
+        # Изменение размера изображения
+        image = cv2.resize(image, (width, height))
+
+    # Выполнить сегментацию со средним сдвигом
+    image_lab = cv2.cvtColor(image, cv2.COLOR_BGR2Lab)
+    shifted = cv2.pyrMeanShiftFiltering(image_lab, 20, 45)
+
+    # Преобразование в оттенки серого
+    shifted_gray = cv2.cvtColor(shifted, cv2.COLOR_BGR2GRAY)
+
+    # Порог изображения
+    _, thresh = cv2.threshold(shifted_gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+    # Найти наибольший контур
+    contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    # Выполнение слежения за объектом
+    (x, y, w, h) = cv2.boundingRect(largest_contour)
+
+    # Вычислить центр прямоугольника
+    center_x = x + w // 2
+    center_y = y + h // 2
+
+    # Вычислить главную и малую оси эллипса
+    a = w // 2
+    b = h // 2
+
+    canvas = np.zeros_like(image) 
+    # Рисуем окружность на изображении
+    cv2.ellipse(canvas, (center_x, center_y), (a, b), 0, 0, 360, (255, 255, 255), -1)
+
+    # Побитовое И между исходным изображением и маской
+    result = cv2.bitwise_and(image, canvas)
+
+    return result, [center_x, center_y]
+
 def try_filter(image, center_circle, check=False):
     # Проверка наличия черных пикселей на изображении или изображение сильно размыто
-    if check_black_pixels(image) or center_circle == 0:
-        messagebox.showerror(title='Ошибка', message='Фото не подходит!')
+    if check_black_pixels(image):
+        show_image(image)
+        messagebox.showerror(title='Ошибка', message='Невозможно найти кристалл!')
         return False
 
     metka = False
@@ -238,7 +288,18 @@ def try_filter(image, center_circle, check=False):
         messagebox.showerror(title='Ошибка', message='Метки не было найдено!')
     return False
 
-def btn_click():
+def btn_click_crystal():
+    file = fileInput.get()
+    if file == '':
+        messagebox.showerror(title='Ошибка', message='Поле не было заполнено!')
+        return
+    file_path = filedialog.askopenfilename()
+    image, center_circle = remove_background(file_path)
+    with open(f"{str(file)}.txt", "a") as f:
+        img = try_filter(image, center_circle)
+        if img: f.write(os.path.basename(file_path) + " = " + str(img) + "\n")
+
+def btn_click_glossy():
     file = fileInput.get()
     if file == '':
         messagebox.showerror(title='Ошибка', message='Поле не было заполнено!')
@@ -251,7 +312,7 @@ def btn_click():
 
 def btn_check():
     file_path = filedialog.askopenfilename()
-    image, center_circle = get_glossy(file_path)
+    image, center_circle = remove_background(file_path)
     try_filter(image, center_circle, check=True)
 
 root.title('Числовой код')
@@ -272,8 +333,11 @@ title.pack()
 fileInput = tk.Entry(frame, bg='white')
 fileInput.pack()
 
-btn = tk.Button(frame, text='Преобразовать', bg='yellow', command=btn_click)
-btn.pack()
+btn_crystal = tk.Button(frame, text='Преобразовать по кристаллу', bg='yellow', command=btn_click_crystal)
+btn_crystal.pack()
+
+btn_glossy = tk.Button(frame, text='Преобразовать по глянцу', bg='yellow', command=btn_click_glossy)
+btn_glossy.pack()
 
 info = tk.Label(frame, text='Числовой код:', font=40)
 info.pack()
