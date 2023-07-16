@@ -9,7 +9,6 @@ import imagehash
 
 import os
 
-
 root = tk.Tk()
 
 # Генерирование хеша изображения
@@ -152,7 +151,7 @@ def get_glossy(path):
     # Проверка яркости изображения с помощью вариации лапласиана
     if variance_of_laplacian(image) < 58:
         return masked_image, 0
-
+    
     # Возвращение маскированного изображения и координат центра окружности
     return masked_image, center
 
@@ -206,8 +205,7 @@ def remove_background(path):
 def try_filter(image, center_circle, check=False):
     # Проверка наличия черных пикселей на изображении или изображение сильно размыто
     if check_black_pixels(image):
-        show_image(image)
-        messagebox.showerror(title='Ошибка', message='Невозможно найти кристалл!')
+        # messagebox.showerror(title='Ошибка', message='Невозможно найти кристалл!')
         return False
 
     metka = False
@@ -257,7 +255,7 @@ def try_filter(image, center_circle, check=False):
                         if np.any(image[box[:, 1], box[:, 0]] == 0):
                             # Проверка, является ли это проверочной операцией
                             if check:
-                                messagebox.showinfo(title='Информация', message='Метка была найдена!')
+                                # messagebox.showinfo(title='Информация', message='Метка была найдена!')
                                 return True
                             else:
                                 # Вычисление центра прямоугольника
@@ -284,8 +282,8 @@ def try_filter(image, center_circle, check=False):
     # Обработка случаев, когда метка не была найдена или была найдена неверная метка
     if metka:
         messagebox.showerror(title='Предупреждение', message='Была найдена неверная метка!')
-    else:
-        messagebox.showerror(title='Ошибка', message='Метки не было найдено!')
+    # else:
+    #     messagebox.showerror(title='Ошибка', message='Метки не было найдено!')
     return False
 
 def btn_click_crystal():
@@ -312,8 +310,17 @@ def btn_click_glossy():
 
 def btn_check():
     file_path = filedialog.askopenfilename()
-    image, center_circle = remove_background(file_path)
-    try_filter(image, center_circle, check=True)
+    image1, center_circle1 = get_glossy(file_path)
+    image2, center_circle2 = remove_background(file_path)
+    if try_filter(image1, center_circle1, check=True) and try_filter(image2, center_circle2, check=True):
+        messagebox.showinfo(title='Информация', message='Метка была найдена на двух методам!')
+    elif try_filter(image1, center_circle1, check=True):
+        messagebox.showinfo(title='Информация', message='Метка была найдена по глянцу!')
+    elif try_filter(image2, center_circle2, check=True):
+        messagebox.showinfo(title='Информация', message='Метка была найдена по кристаллу!')
+    else:
+        messagebox.showinfo(title='Информация', message='Метка не была найдена!')
+
 
 root.title('Числовой код')
 root.wm_attributes('-alpha', 1)
